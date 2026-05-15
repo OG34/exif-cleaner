@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EXIF Cleaner — Remove Image Metadata Privately</title>
+  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f0f2f5;
+      --surface: #ffffff;
+      --surface2: #f8f9fb;
+      --border: #e2e5ea;
+      --text: #1a1d23;
+      --text-muted: #6b7280;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --warn: #d97706;
+      --warn-light: #fffbeb;
+      --success: #16a34a;
+      --success-light: #f0fdf4;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+      --shadow-lg: 0 4px 6px rgba(0,0,0,.05), 0 10px 40px rgba(0,0,0,.1);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .logo p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .privacy-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--success-light);
+      color: var(--success);
+      border: 1px solid #bbf7d0;
+      padding: 6px 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* ── MAIN ── */
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 16px 60px;
+    }
+
+    /* ── DROP ZONE ── */
+    #drop-zone {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+    #drop-zone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .drop-title {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .drop-sub {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .drop-formats {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .format-tag {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: .3px;
+    }
+
+    /* ── TOOLBAR ── */
+    #toolbar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    #toolbar.visible { display: flex; }
+    .toolbar-info {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .toolbar-info strong { color: var(--text); }
+    .toolbar-actions { display: flex; gap: 8px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: .88; }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-danger  { background: var(--danger); color: #fff; }
+    .btn-ghost   { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-sm      { padding: 6px 12px; font-size: 12px; }
+    .btn:disabled { opacity: .45; pointer-events: none; }
+
+    /* ── FILE CARDS ── */
+    #file-list {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-thumb {
+      width: 52px; height: 52px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .card-meta { flex: 1; min-width: 0; }
+    .card-filename {
+      font-weight: 600;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-sizes {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .size-saved {
+      color: var(--success);
+      font-weight: 600;
+    }
+    .card-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .badge {
+      padding: 3px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+    .badge-danger  { background: var(--danger-light);  color: var(--danger); }
+    .badge-warn    { background: var(--warn-light);    color: var(--warn); }
+    .badge-success { background: var(--success-light); color: var(--success); }
+    .badge-neutral { background: var(--surface2);      color: var(--text-muted); }
+    .chevron {
+      width: 20px; height: 20px;
+      color: var(--text-muted);
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .chevron.open { transform: rotate(180deg); }
+
+    .card-body { display: none; border-top: 1px solid var(--border); }
+    .card-body.open { display: block; }
+
+    /* EXIF groups */
+    .exif-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .exif-section:last-child { border-bottom: none; }
+    .exif-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .exif-section-title .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .dot-danger  { background: var(--danger); }
+    .dot-warn    { background: var(--warn); }
+    .dot-neutral { background: #94a3b8; }
+
+    .exif-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 6px;
+    }
+    .exif-row {
+      display: flex;
+      flex-direction: column;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+    }
+    .exif-key {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 2px;
+    }
+    .exif-val {
+      font-size: 12px;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .exif-val.gps { color: var(--danger); font-weight: 600; }
+
+    .no-exif {
+      padding: 20px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .card-actions {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--surface2);
+      border-top: 1px solid var(--border);
+    }
+    .card-actions-left {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── PROGRESS / SPINNER ── */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── EMPTY STATE ── */
+    #empty-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 32px;
+    }
+
+    /* ── TOAST ── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+    .toast {
+      background: var(--text);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      animation: slideIn .25s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 520px) {
+      header { padding: 14px 16px; }
+      .logo h1 { font-size: 15px; }
+      .privacy-badge span { display: none; }
+      .exif-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧹</div>
+    <div>
+      <h1>EXIF Cleaner</h1>
+      <p>Remove metadata from images instantly</p>
+    </div>
+  </div>
+  <div class="privacy-badge">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+    <span>100% local — nothing leaves your device</span>
+  </div>
+</header>
+
+<!-- ── MAIN ── -->
+<main>
+  <!-- Drop Zone -->
+  <div id="drop-zone" role="button" aria-label="Drop images here or click to select">
+    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic,image/heif" multiple />
+    <span class="drop-icon">🖼️</span>
+    <p class="drop-title">Drop images here, or click to select</p>
+    <p class="drop-sub">Scans metadata and lets you download a clean copy</p>
+    <div class="drop-formats">
+      <span class="format-tag">JPG</span>
+      <span class="format-tag">PNG</span>
+      <span class="format-tag">HEIC</span>
+      <span class="format-tag">HEIF</span>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <p class="toolbar-info"><strong id="file-count">0</strong> image(s) loaded</p>
+    <div class="toolbar-actions">
+      <button class="btn btn-ghost btn-sm" id="btn-clear">✕ Clear all</button>
+      <button class="btn btn-primary" id="btn-clean-all">🧹 Clean &amp; Download All</button>
+    </div>
+  </div>
+
+  <!-- File list -->
+  <div id="file-list"></div>
+  <div id="empty-hint" style="display:none">Add more images using the drop zone above.</div>
+</main>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script>
+/* =====================================================
+   EXIF Cleaner — pure browser, zero upload
+   ===================================================== */
+
+const state = { files: [] };
+
+// ── DOM refs ──
+const dropZone   = document.getElementById('drop-zone');
+const fileInput  = document.getElementById('file-input');
+const fileList   = document.getElementById('file-list');
+const toolbar    = document.getElementById('toolbar');
+const fileCount  = document.getElementById('file-count');
+const btnClear   = document.getElementById('btn-clear');
+const btnCleanAll= document.getElementById('btn-clean-all');
+
+// ── Drag & drop ──
+dropZone.addEventListener('dragenter', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', e => { dropZone.classList.remove('drag-over'); });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => {
+  handleFiles([...fileInput.files]);
+  fileInput.value = '';
+});
+
+btnClear.addEventListener('click', () => {
+  state.files = [];
+  fileList.innerHTML = '';
+  updateToolbar();
+});
+
+btnCleanAll.addEventListener('click', async () => {
+  btnCleanAll.disabled = true;
+  btnCleanAll.innerHTML = '<span class="spinner"></span> Processing…';
+  for (const entry of state.files) {
+    if (!entry.cleaned) await cleanEntry(entry);
+  }
+  btnCleanAll.disabled = false;
+  btnCleanAll.innerHTML = '🧹 Clean &amp; Download All';
+  toast('All files downloaded!');
+});
+
+// ── Handle dropped/selected files ──
+async function handleFiles(files) {
+  const images = files.filter(f => /image\/(jpeg|png|heic|heif)/i.test(f.type) ||
+    /\.(jpe?g|png|heic|heif)$/i.test(f.name));
+  if (!images.length) { toast('No supported images found.'); return; }
+
+  for (const file of images) {
+    const id = crypto.randomUUID();
+    const entry = { id, file, exif: null, cleaned: false, cleanedSize: null };
+    state.files.push(entry);
+    const card = createCard(entry);
+    fileList.appendChild(card);
+    updateToolbar();
+    // async load exif
+    loadExif(entry);
+  }
+}
+
+function updateToolbar() {
+  fileCount.textContent = state.files.length;
+  toolbar.classList.toggle('visible', state.files.length > 0);
+}
+
+// ── EXIF reading ──
+async function loadExif(entry) {
+  const card = document.getElementById('card-' + entry.id);
+  try {
+    const tags = await exifr.parse(entry.file, {
+      tiff: true, exif: true, gps: true, iptc: true, icc: false, jfif: true,
+      xmp: true, ihdr: true, reviveValues: true, translateValues: true,
+      translateKeys: true, sanitize: true
+    });
+    entry.exif = tags || {};
+  } catch (e) {
+    entry.exif = {};
+  }
+  if (card) renderExif(entry, card);
+}
+
+// ── Card creation ──
+function createCard(entry) {
+  const { id, file } = entry;
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  card.id = 'card-' + id;
+
+  const thumbUrl = URL.createObjectURL(file);
+
+  card.innerHTML = `
+    <div class="card-header" id="header-${id}">
+      <img class="card-thumb" src="${thumbUrl}" alt="" onerror="this.style.background='var(--border)'"/>
+      <div class="card-meta">
+        <div class="card-filename">${escHtml(file.name)}</div>
+        <div class="card-sizes">
+          <span>Original: <strong>${fmtSize(file.size)}</strong></span>
+          <span id="cleaned-size-${id}" style="display:none">
+            → Cleaned: <strong id="cs-val-${id}"></strong>
+            <span class="size-saved" id="cs-saved-${id}"></span>
+          </span>
+        </div>
+      </div>
+      <div class="card-status" id="status-${id}">
+        <span class="badge badge-neutral">Scanning…</span>
+      </div>
+      <svg class="chevron" id="chev-${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="card-body" id="body-${id}">
+      <div class="no-exif" id="exif-loading-${id}">Scanning metadata…</div>
+      <div id="exif-content-${id}" style="display:none"></div>
+      <div class="card-actions">
+        <span class="card-actions-left" id="action-hint-${id}">Ready to clean</span>
+        <button class="btn btn-primary btn-sm" id="btn-clean-${id}">🧹 Clean &amp; Download</button>
+      </div>
+    </div>`;
+
+  // toggle expand
+  card.querySelector('#header-' + id).addEventListener('click', () => toggleCard(id));
+  card.querySelector('#btn-clean-' + id).addEventListener('click', () => cleanEntry(entry));
+
+  return card;
+}
+
+function toggleCard(id) {
+  const body = document.getElementById('body-' + id);
+  const chev = document.getElementById('chev-' + id);
+  const open = body.classList.toggle('open');
+  chev.classList.toggle('open', open);
+}
+
+// ── Render EXIF ──
+function renderExif(entry, card) {
+  const { id, exif } = entry;
+  const loading = document.getElementById('exif-loading-' + id);
+  const content = document.getElementById('exif-content-' + id);
+  const statusEl = document.getElementById('status-' + id);
+
+  if (!loading || !content) return;
+  loading.style.display = 'none';
+  content.style.display = 'block';
+
+  // categorise
+  const groups = {
+    gps:      { label: '📍 Location (GPS)', dot: 'danger',  keys: [], entries: {} },
+    datetime: { label: '🕐 Date & Time',    dot: 'warn',    keys: [], entries: {} },
+    camera:   { label: '📷 Camera',         dot: 'neutral', keys: [], entries: {} },
+    settings: { label: '⚙️ Capture Settings',dot: 'neutral', keys: [], entries: {} },
+    software: { label: '💻 Software',        dot: 'warn',    keys: [], entries: {} },
+    other:    { label: '📋 Other',           dot: 'neutral', keys: [], entries: {} },
+  };
+
+  const GPS_KEYS   = new Set(['latitude','longitude','altitude','GPSLatitude','GPSLongitude','GPSAltitude',
+    'GPSLatitudeRef','GPSLongitudeRef','GPSAltitudeRef','GPSSpeed','GPSImgDirection',
+    'GPSDestBearing','GPSHPositioningError','GPSTimeStamp','GPSDateStamp']);
+  const DATE_KEYS  = new Set(['DateTimeOriginal','DateTime','DateTimeDigitized','CreateDate',
+    'ModifyDate','GPSDateStamp','SubSecTime','OffsetTime']);
+  const CAM_KEYS   = new Set(['Make','Model','LensModel','LensMake','LensInfo','CameraSerialNumber',
+    'BodySerialNumber','LensSerialNumber']);
+  const SET_KEYS   = new Set(['ISO','ExposureTime','FNumber','ApertureValue','ShutterSpeedValue',
+    'FocalLength','FocalLengthIn35mmFormat','ExposureBiasValue','MaxApertureValue',
+    'MeteringMode','Flash','WhiteBalance','ExposureMode','SceneCaptureType',
+    'Contrast','Saturation','Sharpness','BrightnessValue','LightSource',
+    'DigitalZoomRatio','GainControl','ExposureProgram','SensitivityType',
+    'ColorSpace','ImageWidth','ImageHeight','PixelXDimension','PixelYDimension',
+    'Orientation','XResolution','YResolution','ResolutionUnit']);
+  const SOFT_KEYS  = new Set(['Software','ProcessingSoftware','ImageDescription','Artist',
+    'Copyright','Creator','XPAuthor','XPTitle','XPComment','XPKeywords',
+    'HostComputer']);
+
+  if (!exif || Object.keys(exif).length === 0) {
+    content.innerHTML = '<div class="no-exif">No EXIF metadata found in this file.</div>';
+    statusEl.innerHTML = '<span class="badge badge-success">No metadata</span>';
+    return;
+  }
+
+  for (const [k, v] of Object.entries(exif)) {
+    if (v === null || v === undefined) continue;
+    let group = 'other';
+    if (GPS_KEYS.has(k))  group = 'gps';
+    else if (DATE_KEYS.has(k))  group = 'datetime';
+    else if (CAM_KEYS.has(k))   group = 'camera';
+    else if (SET_KEYS.has(k))   group = 'settings';
+    else if (SOFT_KEYS.has(k))  group = 'software';
+    groups[group].keys.push(k);
+    groups[group].entries[k] = v;
+  }
+
+  let hasGps = groups.gps.keys.length > 0;
+  let totalFields = Object.keys(exif).length;
+
+  // status badge
+  if (hasGps) {
+    statusEl.innerHTML = `<span class="badge badge-danger">GPS + ${totalFields} fields</span>`;
+  } else if (totalFields > 0) {
+    statusEl.innerHTML = `<span class="badge badge-warn">${totalFields} metadata fields</span>`;
+  } else {
+    statusEl.innerHTML = `<span class="badge badge-success">No metadata</span>`;
+  }
+
+  let html = '';
+  for (const [gKey, g] of Object.entries(groups)) {
+    if (g.keys.length === 0) continue;
+    html += `<div class="exif-section">
+      <div class="exif-section-title">
+        <span class="dot dot-${g.dot}"></span>${g.label}
+        <span class="badge badge-neutral" style="font-size:10px;padding:1px 6px">${g.keys.length}</span>
+      </div>
+      <div class="exif-grid">`;
+    for (const k of g.keys) {
+      const val = formatExifValue(k, g.entries[k]);
+      const isGps = gKey === 'gps';
+      html += `<div class="exif-row">
+        <span class="exif-key">${escHtml(k)}</span>
+        <span class="exif-val${isGps ? ' gps' : ''}">${escHtml(val)}</span>
+      </div>`;
+    }
+    html += '</div></div>';
+  }
+  content.innerHTML = html;
+}
+
+function formatExifValue(key, val) {
+  if (val === null || val === undefined) return '—';
+  if (val instanceof Date) return val.toLocaleString();
+  if (typeof val === 'number') {
+    if (key === 'ExposureTime') return val < 1 ? `1/${Math.round(1/val)}s` : `${val}s`;
+    if (key === 'FNumber') return `f/${val}`;
+    if (key === 'FocalLength' || key === 'FocalLengthIn35mmFormat') return `${val}mm`;
+    if (key === 'ISO') return val.toString();
+    if (key === 'latitude' || key === 'longitude') return val.toFixed(6) + '°';
+    if (key === 'altitude') return val.toFixed(1) + 'm';
+    return val.toString();
+  }
+  if (Array.isArray(val)) return val.join(', ');
+  if (val instanceof Uint8Array || val instanceof ArrayBuffer) return '[binary data]';
+  return String(val);
+}
+
+// ── Clean & Download ──
+async function cleanEntry(entry) {
+  const { id, file } = entry;
+  const btn = document.getElementById('btn-clean-' + id);
+  const hint = document.getElementById('action-hint-' + id);
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Cleaning…';
+  if (hint) hint.textContent = 'Removing metadata…';
+
+  try {
+    const blob = await stripMetadata(file);
+    entry.cleaned = true;
+    entry.cleanedSize = blob.size;
+
+    // update size display
+    const row = document.getElementById('cleaned-size-' + id);
+    const val = document.getElementById('cs-val-' + id);
+    const saved = document.getElementById('cs-saved-' + id);
+    if (row && val && saved) {
+      val.textContent = fmtSize(blob.size);
+      const diff = file.size - blob.size;
+      if (diff > 0) saved.textContent = `(−${fmtSize(diff)})`;
+      row.style.display = 'inline-flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '4px';
+    }
+
+    // download
+    const ext  = cleanedExtension(file);
+    const name = file.name.replace(/\.[^.]+$/, '') + '_clean.' + ext;
+    triggerDownload(blob, name);
+
+    btn.innerHTML = '✓ Downloaded';
+    btn.className = 'btn btn-ghost btn-sm';
+    btn.disabled = false;
+    if (hint) hint.textContent = 'Metadata removed successfully';
+
+    const statusEl = document.getElementById('status-' + id);
+    if (statusEl) statusEl.innerHTML = '<span class="badge badge-success">Cleaned</span>';
+
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = '🧹 Clean &amp; Download';
+    toast('Error: ' + (err.message || 'Could not process file.'));
+    console.error(err);
+  }
+}
+
+function cleanedExtension(file) {
+  if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) return 'jpg';
+  if (file.type === 'image/png') return 'png';
+  return 'jpg';
+}
+
+async function stripMetadata(file) {
+  // For JPEG: we can strip EXIF segments directly for lossless cleaning.
+  // For PNG/HEIC and fallback: re-encode via canvas (slight recompression).
+  if (file.type === 'image/jpeg' || /\.(jpe?g)$/i.test(file.name)) {
+    try {
+      return await stripJpegExif(file);
+    } catch {
+      return await reEncodeViaCanvas(file, 'image/jpeg');
+    }
+  }
+  if (file.type === 'image/png') {
+    return await reEncodeViaCanvas(file, 'image/png');
+  }
+  // HEIC/HEIF → convert to JPEG via canvas
+  return await reEncodeViaCanvas(file, 'image/jpeg');
+}
+
+// Lossless JPEG EXIF stripping: remove APP0/APP1/APP2/APP13 segments
+async function stripJpegExif(file) {
+  const buf = await file.arrayBuffer();
+  const view = new DataView(buf);
+
+  // verify JPEG SOI
+  if (view.getUint16(0) !== 0xFFD8) throw new Error('Not a JPEG');
+
+  const out = [new Uint8Array([0xFF, 0xD8])]; // SOI
+  let offset = 2;
+
+  while (offset < view.byteLength - 1) {
+    if (view.getUint8(offset) !== 0xFF) break;
+    const marker = view.getUint16(offset);
+
+    // EOI or raw entropy data
+    if (marker === 0xFFD9) { out.push(new Uint8Array([0xFF, 0xD9])); break; }
+    // SOS: copy rest of file as-is (compressed image data)
+    if (marker === 0xFFDA) { out.push(new Uint8Array(buf, offset)); break; }
+
+    const segLen = view.getUint16(offset + 2); // includes length bytes
+    const segEnd = offset + 2 + segLen;
+
+    // Strip: APP0-APP15 (0xFFE0–0xFFEF) and COM (0xFFFE)
+    const strip = (marker >= 0xFFE0 && marker <= 0xFFEF) || marker === 0xFFFE;
+
+    if (!strip) {
+      out.push(new Uint8Array(buf, offset, 2 + segLen));
+    }
+    offset = segEnd;
+  }
+
+  return new Blob(out, { type: 'image/jpeg' });
+}
+
+async function reEncodeViaCanvas(file, mimeType) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const quality = mimeType === 'image/jpeg' ? 0.95 : undefined;
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas toBlob failed'));
+      }, mimeType, quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed — HEIC may not be supported in this browser.')); };
+    img.src = url;
+  });
+}
+
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+// ── Helpers ──
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toast(msg, duration = 3500) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+</script>
+</body>
+</html>
